@@ -10,6 +10,10 @@ targetWin := "ahk_exe CUCloudClientiEntry.exe"
 imgDir    := A_ScriptDir "\img"
 phoneNum  := "18682253046"
 
+; ImageSearch 默认局部搜索范围，依次为：左、上、右、下（窗口比例）
+; 基于 2560×1494 客户区中的 (1300,700) 到 (2100,1200)，并预留少量边距
+defaultSearchRegion := [0.50, 0.46, 0.83, 0.81]
+
 CoordMode("Pixel", "Client")
 CoordMode("Mouse", "Client")
 
@@ -48,7 +52,7 @@ if !FindAndClick(imgDir "\get_code_btn.png", 120, 40) {
     MsgBox("未找到「获取验证码」按钮。`n请检查 img\get_code_btn.png 是否存在、清晰、DPI 一致。")
     ExitApp
 }
-Sleep(30000)  ; 点击成功后等待 30 秒，让验证码邮件到达
+Sleep(120000)  ; 点击成功后等待 30 秒，让验证码邮件到达
 
 ; 7. 调用 test.py 从邮箱读取验证码（邮件可能延迟到达，循环重试）
 ;    test.py 的 stdout 仅输出 6 位验证码；NOTFOUND/ERROR 表示尚未取到
@@ -89,18 +93,24 @@ if !FindAndClick(imgDir "\login_btn.png", 780, 90) {
 
 ; ===== 工具函数 =====
 
-; 在目标窗口客户区查找图片并点击其中心
-; 参数：图片路径, 图片宽, 图片高, 重试次数(默认 15)
+; 在目标窗口客户区的指定范围内查找图片并点击其中心
+; region 使用窗口比例：[左, 上, 右, 下]；传入 0 时使用 defaultSearchRegion
 ; 返回：找到并点击返回 true，否则 false
-FindAndClick(imgPath, w, h, retries := 10) {
-    global targetWin
+FindAndClick(imgPath, w, h, retries := 10, region := 0) {
+    global targetWin, defaultSearchRegion
     if !FileExist(imgPath)
         return false
     WinGetClientPos(&cX, &cY, &cW, &cH, targetWin)
+    if !IsObject(region)
+        region := defaultSearchRegion
+    x1 := Max(0, Floor(cW * region[1]))
+    y1 := Max(0, Floor(cH * region[2]))
+    x2 := Min(cW - 1, Ceil(cW * region[3]) - 1)
+    y2 := Min(cH - 1, Ceil(cH * region[4]) - 1)
     tolerances := [2, 20, 40]              ; 逐级提高颜色容差，应对渲染/DPI 差异
     Loop retries {
         for tol in tolerances {
-            if ImageSearch(&fx, &fy, 0, 0, cW, cH, "*" tol " " imgPath) {
+            if ImageSearch(&fx, &fy, x1, y1, x2, y2, "*" tol " " imgPath) {
                 Click(fx + w // 2, fy + h // 2)   ; 点击图片中心
                 return true
             }
