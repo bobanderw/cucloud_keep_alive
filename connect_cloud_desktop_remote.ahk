@@ -5,14 +5,15 @@
 ; 流程：启动 → 最大化 → 点「验证码登录」→ 输入手机号
 
 ; ===== 配置区 =====
-appPath   := "D:\App\cucloud\CUCloud\CUCloudClientiEntry\bin\CUCloudClientiEntry.exe"
+; appPath   := "D:\App\cucloud\CUCloud\CUCloudClientiEntry\bin\CUCloudClientiEntry.exe"
+appPath   := "C:\Program Files (x86)\CUCloudClientiEntry\CUCloud\CUCloudClientiEntry\bin\CUCloudClientiEntry.exe"
 targetWin := "ahk_exe CUCloudClientiEntry.exe"
 imgDir    := A_ScriptDir "\img"
 phoneNum  := "18682253046"
 
 ; ImageSearch 默认局部搜索范围，依次为：左、上、右、下（窗口比例）
-; 基于 2560×1494 客户区中的 (1300,700) 到 (2100,1200)，并预留少量边距
-defaultSearchRegion := [0.50, 0.46, 0.83, 0.81]
+; 基于 2560×1494 客户区中的 (1300,630) 到 (2110,1225)，并预留少量边距
+defaultSearchRegion := [0.49, 0.41, 0.84, 0.83]
 
 CoordMode("Pixel", "Client")
 CoordMode("Mouse", "Client")
@@ -22,12 +23,38 @@ CoordMode("Mouse", "Client")
 ; 1. 启动应用程序
 Run(appPath)
 
-; 2. 等待窗口出现（最多 30 秒）
-WinWait(targetWin,, 30)
+; 2. 等待主窗口完成初始化，并反复尝试最大化（最多 60 秒）
+maximized := false
+deadline := A_TickCount + 60000
+while A_TickCount < deadline {
+    hwnd := WinExist(targetWin)
+    if hwnd {
+        try {
+            winTitle := "ahk_id " hwnd
+            WinGetClientPos(&cX, &cY, &cW, &cH, winTitle)
+            ; 忽略启动画面或尚未完成布局的临时小窗口
+            if cW >= 600 && cH >= 400 {
+                if WinGetMinMax(winTitle) = -1
+                    WinRestore(winTitle)
+                WinActivate(winTitle)
+                WinMaximize(winTitle)
+                Sleep(500)
+                if WinGetMinMax(winTitle) = 1 {
+                    maximized := true
+                    break
+                }
+            }
+        } catch {
+            ; 启动页切换到主窗口时句柄可能失效，下一轮重新获取
+        }
+    }
+    Sleep(500)
+}
 
-; 3. 激活并最大化窗口
-WinActivate(targetWin)
-WinMaximize(targetWin)
+if !maximized {
+    MsgBox("CUCloud 主窗口在 60 秒内未能成功最大化。")
+    ExitApp
+}
 
 ; 4. 点击「验证码登录」按钮
 ;    截图：img\verify_login_btn.png；第 2、3 个参数填截图实际像素宽、高
@@ -83,12 +110,11 @@ Sleep(300)
 Send("^a")
 SendText(verifyCode)
 
-; 9. 点击「登录」按钮
-;    截图：img\login_btn.png；参数填截图实际像素宽、高
-if !FindAndClick(imgDir "\login_btn.png", 780, 90) {
-    MsgBox("未找到「登录」按钮。`n请检查 img\login_btn.png 是否存在、清晰、DPI 一致。")
-    ExitApp
-}
+; 9. 按三次 Tab 聚焦「登录」按钮，再按 Enter 点击
+Sleep(500)
+Send("{Tab 3}")
+Sleep(2000)
+Send("{Enter}")
 
 ; ===== 工具函数 =====
 
