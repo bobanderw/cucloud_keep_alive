@@ -26,6 +26,14 @@ try:
 
     latest_email_id = ids[-1]
     result, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+    if result != "OK":
+        raise RuntimeError("failed to fetch latest email")
+
+    # 清除本轮已有的全部未读状态，避免下次读取到旧邮件。
+    result, _ = mail.store(b",".join(ids), "+FLAGS", "\\Seen")
+    if result != "OK":
+        raise RuntimeError("failed to mark emails as read")
+
     msg = email.message_from_bytes(msg_data[0][1])
 
     # 提取正文
