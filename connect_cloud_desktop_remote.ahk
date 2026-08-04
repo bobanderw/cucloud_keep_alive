@@ -45,7 +45,19 @@ Log(
 
 ; 1. 启动应用程序
 Log("步骤1：准备启动 CUCloud，路径=" . appPath)
-Run(appPath)
+try {
+    Run(appPath)
+} catch as err {
+    if HandleAttemptFailure(
+        "步骤1",
+        "启动 CUCloud 异常：" . err.Message,
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
+}
 Log("步骤1：启动命令已发送")
 
 ; 2. 等待主窗口完成初始化，并反复尝试最大化（最多 60 秒）
@@ -91,18 +103,30 @@ while A_TickCount < deadline {
 }
 
 if !maximized {
-    Log("步骤2：60秒内未能最大化主窗口", "ERROR")
-    MsgBox("CUCloud 主窗口在 60 秒内未能成功最大化。")
-    ExitApp
+    if HandleAttemptFailure(
+        "步骤2",
+        "60秒内未能最大化主窗口",
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
 }
 
 ; 4. 点击「验证码登录」按钮
 ;    截图：img\verify_login_btn.png；第 2、3 个参数填截图实际像素宽、高
 Log("步骤4：开始查找并点击「验证码登录」")
 if !FindAndClick(imgDir "\verify_login_btn.png", 120, 40) {
-    Log("步骤4：未找到「验证码登录」", "ERROR")
-    MsgBox("未找到「验证码登录」按钮。`n请检查 img\verify_login_btn.png 是否存在、清晰、DPI 一致。")
-    ExitApp
+    if HandleAttemptFailure(
+        "步骤4",
+        "未找到「验证码登录」按钮",
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
 }
 Log("步骤4：「验证码登录」点击完成")
 
@@ -110,9 +134,15 @@ Log("步骤4：「验证码登录」点击完成")
 ;    截图：img\phone_input.png（建议截含「请输入手机号」占位文字的输入框）；参数填宽、高
 Log("步骤5：开始查找手机号输入框")
 if !FindAndClick(imgDir "\phone_input.png", 200, 50) {
-    Log("步骤5：未找到手机号输入框", "ERROR")
-    MsgBox("未找到手机号输入框。`n请检查 img\phone_input.png 是否存在、清晰、DPI 一致。")
-    ExitApp
+    if HandleAttemptFailure(
+        "步骤5",
+        "未找到手机号输入框",
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
 }
 Log("步骤5：手机号输入框已点击，准备输入")
 Sleep(300)            ; 等输入框聚焦
@@ -138,9 +168,15 @@ pyScript   := A_ScriptDir "\test.py"
 out        := ""
 Log("步骤7：准备调用 Python，脚本=" . pyScript)
 if !FileExist(pyScript) {
-    Log("步骤7：Python 脚本不存在", "ERROR")
-    MsgBox("未找到 Python 脚本：`n" . pyScript)
-    ExitApp
+    if HandleAttemptFailure(
+        "步骤7",
+        "Python 脚本不存在：" . pyScript,
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
 }
 Loop 30 {                                  ; 最多等 30×2 = 60 秒
     attempt := A_Index
@@ -172,18 +208,32 @@ Loop 30 {                                  ; 最多等 30×2 = 60 秒
     Sleep(2000)
 }
 if verifyCode = "" {
-    Log("步骤7：30次轮询后仍未获得验证码", "ERROR")
-    MsgBox("未能从邮件获取验证码。`n最近一次输出：" . out . "`n请手动运行 test.py 排查。")
-    ExitApp
+    reason := "30次轮询后仍未获得验证码，最近一次输出="
+        . (out = "" ? "<空>" : out)
+    if HandleAttemptFailure(
+        "步骤7",
+        reason,
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
 }
 
 ; 8. 点击验证码输入框并输入验证码
 ;    截图：img\code_input.png；参数填截图实际像素宽、高
 Log("步骤8：开始查找验证码输入框")
 if !FindAndClick(imgDir "\code_input.png", 200, 50) {
-    Log("步骤8：未找到验证码输入框", "ERROR")
-    MsgBox("未找到验证码输入框。`n请检查 img\code_input.png 是否存在、清晰、DPI 一致。")
-    ExitApp
+    if HandleAttemptFailure(
+        "步骤8",
+        "未找到验证码输入框",
+        currentAttempt,
+        maxAttempts
+    ) {
+        continue
+    }
+    break
 }
 Log("步骤8：验证码输入框已点击，准备输入")
 Sleep(300)
@@ -229,29 +279,54 @@ Log(
     "步骤10：120秒内未检测到远程桌面窗口，当前尝试失败",
     "ERROR"
 )
-ForceCloseCloudPrograms("第" currentAttempt "次登录失败后的清理")
-
-if currentAttempt < maxAttempts {
-    Log(
-        "重试：3秒后重新执行整套流程，下一次="
-        (currentAttempt + 1) "/" maxAttempts,
-        "WARN"
-    )
-    Sleep(3000)
-} else {
-    Log("重试次数已耗尽，不再重新登录", "ERROR")
+if HandleAttemptFailure(
+    "步骤10",
+    "120秒内未检测到远程桌面窗口",
+    currentAttempt,
+    maxAttempts
+) {
+    continue
 }
+break
 }
 
 if !loginSucceeded {
     MsgBox(
         "登录失败：首次执行及后续 " maxRetries
-        " 次重试均未检测到 uSmartView_VDI_Client.exe 窗口。"
+        " 次重试均未完成登录。`n详细失败原因请查看日志：`n" logFile
     )
     ExitApp
 }
 
 ; ===== 工具函数 =====
+
+; 当前步骤失败时清理全部相关进程；返回 true 表示仍可重新执行整套流程
+HandleAttemptFailure(stepName, reason, currentAttempt, maxAttempts) {
+    Log(
+        stepName "：当前尝试失败，原因=" reason
+        "，尝试=" currentAttempt "/" maxAttempts,
+        "ERROR"
+    )
+    ForceCloseCloudPrograms(
+        "第" currentAttempt "次尝试的" stepName "失败"
+    )
+
+    if currentAttempt >= maxAttempts {
+        Log(
+            "整套流程重试次数已耗尽，不再重新登录",
+            "ERROR"
+        )
+        return false
+    }
+
+    Log(
+        "重试：3秒后从步骤1重新执行，下一次="
+        (currentAttempt + 1) "/" maxAttempts,
+        "WARN"
+    )
+    Sleep(3000)
+    return true
+}
 
 ; 写入带时间戳的 UTF-8 日志；日志失败不影响主流程
 Log(message, level := "INFO") {
